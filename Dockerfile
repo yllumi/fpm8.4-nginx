@@ -40,11 +40,17 @@ FROM serversideup/php:${PHP_VERSION}-fpm-nginx AS base
 # install-php-extensions + apt-get butuh root (base image berakhir sebagai www-data)
 USER root
 
-# Paket sistem: git, SSH client, dan utilitas pendamping.
+# Paket sistem: git, SSH client, editor, dan utilitas pendamping.
 # WAJIB satu argumen dipisah koma: helper ini hanya membaca "$1", sehingga
 # paket kedua dan seterusnya akan diabaikan bila ditulis sebagai arg berpisah.
+# vim-tiny dipilih daripada vim: hemat ~45 MB karena vim-runtime tak ikut.
 RUN docker-php-serversideup-dep-install-debian \
-        "ca-certificates,git,git-lfs,less,openssh-client,rsync"
+        "ca-certificates,git,git-lfs,less,nano,openssh-client,rsync,vim-tiny"
+
+# vim-tiny hanya mengirim /usr/bin/vim.tiny dan tidak mendaftarkan alternatif
+# "vim", jadi daftarkan manual agar perintah `vim` benar-benar tersedia.
+# Prioritas 10: otomatis tersisih bila vim/vim-nox penuh dipasang kemudian.
+RUN update-alternatives --install /usr/bin/vim vim /usr/bin/vim.tiny 10
 
 # Mounted volume (bind mount dari host) biasanya milik UID lain, sehingga git
 # menolak repo-nya dengan error "dubious ownership" tanpa safe.directory ini.
