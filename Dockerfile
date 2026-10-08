@@ -22,6 +22,16 @@
 
 ARG PHP_VERSION=8.4
 
+# Metadata OCI — nilai default, semua bisa dioverride saat build:
+#   --build-arg IMAGE_VERSION=1.0.0
+# Dideklarasikan di scope global agar bisa di-redeclare di stage mana pun
+# (nilai ARG yang dideklarasikan di dalam satu stage tidak diwarisi stage lain).
+ARG IMAGE_VERSION="0.1.0"
+ARG IMAGE_SOURCE="https://github.com/yllumi/fpm8.4-nginx"
+ARG IMAGE_URL="https://hub.docker.com/r/yllumi/fpm8.4-nginx"
+ARG IMAGE_LICENSE="GPL-3.0-or-later"
+ARG IMAGE_AUTHORS="yllumi"
+
 ###############################################################################
 # Stage: base — paket sistem + installer ekstensi (dipakai semua target)
 ###############################################################################
@@ -71,24 +81,34 @@ COPY --from=mlocati/php-extension-installer:2.12.0 /usr/bin/install-php-extensio
 ###############################################################################
 FROM base AS runtime
 
-# Metadata OCI — tampil di halaman Docker Hub.
-# Semua bisa dioverride saat build, contoh:
-#   --build-arg IMAGE_VERSION=1.0.0 --build-arg IMAGE_LICENSE=MIT
+ARG PHP_EXTENSIONS_PROD="bcmath exif gd gmp igbinary imagick intl mysqli soap sockets uuid yaml"
+RUN install-php-extensions ${PHP_EXTENSIONS_PROD}
+
+# Metadata OCI — tampil di halaman Docker Hub. Sengaja diletakkan SETELAH RUN
+# kompilasi ekstensi: instruksi LABEL membuat layer baru, jadi bila ditaruh
+# sebelumnya setiap perubahan label/versi akan memaksa kompilasi ulang semua
+# ekstensi. Semua nilai bisa dioverride saat build, mis.:
+#   --build-arg IMAGE_VERSION=1.0.0
+#
+# Label bawaan base image (source/url/documentation/vendor ke arah
+# serversideup/docker-php) di-override di sini karena image ini punya sumber
+# sendiri; hanya base.name yang tetap menunjuk ke upstream.
 ARG PHP_VERSION
-ARG IMAGE_TITLE="PHP ${PHP_VERSION} + PHP-FPM + Nginx"
-ARG IMAGE_DESCRIPTION="serversideup/php dengan set ekstensi PHP yang dikurasi untuk aplikasi umum — tanpa ekstensi usang/niche, siap deploy."
-ARG IMAGE_VERSION="0.1.0"
-ARG IMAGE_LICENSE="GPL-3.0-or-later"
-ARG IMAGE_AUTHORS="yllumi"
-LABEL org.opencontainers.image.title="${IMAGE_TITLE}" \
-      org.opencontainers.image.description="${IMAGE_DESCRIPTION}" \
+ARG IMAGE_VERSION
+ARG IMAGE_SOURCE
+ARG IMAGE_URL
+ARG IMAGE_LICENSE
+ARG IMAGE_AUTHORS
+LABEL org.opencontainers.image.title="PHP ${PHP_VERSION} + PHP-FPM + Nginx" \
+      org.opencontainers.image.description="serversideup/php dengan set ekstensi PHP yang dikurasi untuk aplikasi umum — tanpa ekstensi usang/niche, siap deploy." \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.source="${IMAGE_SOURCE}" \
+      org.opencontainers.image.documentation="${IMAGE_SOURCE}" \
+      org.opencontainers.image.url="${IMAGE_URL}" \
+      org.opencontainers.image.vendor="${IMAGE_AUTHORS}" \
       org.opencontainers.image.licenses="${IMAGE_LICENSE}" \
       org.opencontainers.image.authors="${IMAGE_AUTHORS}" \
       org.opencontainers.image.base.name="docker.io/serversideup/php:${PHP_VERSION}-fpm-nginx"
-
-ARG PHP_EXTENSIONS_PROD="bcmath exif gd gmp igbinary imagick intl mysqli soap sockets uuid yaml"
-RUN install-php-extensions ${PHP_EXTENSIONS_PROD}
 
 ###############################################################################
 # Stage: dev — runtime + tooling development (JANGAN dipakai di produksi)
@@ -101,6 +121,14 @@ FROM runtime AS dev
 
 ARG PHP_EXTENSIONS_DEV="xdebug ast"
 RUN install-php-extensions ${PHP_EXTENSIONS_DEV}
+
+# Label varian: perubahan di sini hanya membatalkan cache layer xdebug/ast,
+# bukan kompilasi ekstensi produksi.
+ARG PHP_VERSION
+ARG IMAGE_VERSION
+LABEL org.opencontainers.image.title="PHP ${PHP_VERSION} + PHP-FPM + Nginx (dev)" \
+      org.opencontainers.image.description="Varian dev dari yllumi/fpm8.4-nginx: sama dengan produksi plus xdebug & ast. JANGAN dipakai di produksi." \
+      org.opencontainers.image.version="${IMAGE_VERSION}-dev"
 
 # Xdebug 3 membaca env ini dan menang atas nilai di php.ini, jadi cukup
 # dioverride saat runtime: -e XDEBUG_MODE=debug,coverage
